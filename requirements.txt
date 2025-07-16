@@ -1,5 +1,6 @@
 streamlit
-requests
-numpy
-python-dotenv
+pandas
 scikit-learn
+numpy
+requests
+python-dotenv
