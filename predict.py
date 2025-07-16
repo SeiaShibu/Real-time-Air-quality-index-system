@@ -11,43 +11,54 @@ scaler = pickle.load(open('scaler.pkl', 'rb'))
 
 def get_latlon(city):
     url = f"http://api.openweathermap.org/geo/1.0/direct?q={city}&limit=1&appid={API_KEY}"
-    r = requests.get(url).json()
-    return (r[0]['lat'], r[0]['lon']) if r else (None, None)
+    response = requests.get(url).json()
+    if response:
+        return response[0]['lat'], response[0]['lon']
+    return None, None
 
 def get_pollutants(lat, lon):
     url = f"http://api.openweathermap.org/data/2.5/air_pollution?lat={lat}&lon={lon}&appid={API_KEY}"
-    r = requests.get(url).json()
-    return r['list'][0]['components'] if 'list' in r else None
+    response = requests.get(url).json()
+    if 'list' in response:
+        return response['list'][0]['components']
+    return None
 
-st.title("🌍 Air Quality Index Predictor")
+st.title("🌍 Real-Time Air Quality Index Predictor")
 
-mode = st.radio("Choose mode:", ("City", "Coordinates"))
+mode = st.radio("Choose Mode", ["City", "Coordinates"])
 
 if mode == "City":
-    city = st.text_input("Enter City")
+    city = st.text_input("Enter City Name")
     if city:
         lat, lon = get_latlon(city)
         if lat:
+            st.info(f"Latitude: {lat}, Longitude: {lon}")
             components = get_pollutants(lat, lon)
             if components:
-                data = np.array([[components[k] for k in ['co','no','no2','o3','so2','pm2_5','pm10','nh3']]])
-                pred = model.predict(scaler.transform(data))[0]
-                st.success(f"AQI Prediction: {pred:.2f}")
+                st.subheader("Pollutants Levels (µg/m³):")
                 st.json(components)
-            else:
-                st.error("Couldn't fetch pollutant data!")
-        else:
-            st.error("City not found!")
 
-elif mode == "Coordinates":
-    lat = st.number_input("Latitude")
-    lon = st.number_input("Longitude")
+                input_data = np.array([[components[k] for k in ['co','no','no2','o3','so2','pm2_5','pm10','nh3']]])
+                scaled_data = scaler.transform(input_data)
+                prediction = model.predict(scaled_data)[0]
+                st.success(f"Predicted AQI for {city}: {prediction:.2f}")
+            else:
+                st.error("Couldn't fetch pollutant data.")
+        else:
+            st.error("City not found.")
+
+if mode == "Coordinates":
+    lat = st.number_input("Latitude", format="%.4f")
+    lon = st.number_input("Longitude", format="%.4f")
     if st.button("Predict AQI"):
         components = get_pollutants(lat, lon)
         if components:
-            data = np.array([[components[k] for k in ['co','no','no2','o3','so2','pm2_5','pm10','nh3']]])
-            pred = model.predict(scaler.transform(data))[0]
-            st.success(f"AQI Prediction: {pred:.2f}")
+            st.subheader("Pollutants Levels (µg/m³):")
             st.json(components)
+
+            input_data = np.array([[components[k] for k in ['co','no','no2','o3','so2','pm2_5','pm10','nh3']]])
+            scaled_data = scaler.transform(input_data)
+            prediction = model.predict(scaled_data)[0]
+            st.success(f"Predicted AQI: {prediction:.2f}")
         else:
-            st.error("Couldn't fetch pollutant data!")
+            st.error("Couldn't fetch pollutant data.")
