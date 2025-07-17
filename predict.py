@@ -2,21 +2,25 @@ import streamlit as st
 import requests
 import numpy as np
 import pickle
-from datetime import datetime, timedelta
+from datetime import datetime
 from dotenv import load_dotenv
 import os
+from pytz import timezone
 
 # Load environment variables
 load_dotenv()
-API_KEY='ca1d76dde41cf661ff6009df2c27b08f'
+API_KEY = 'ca1d76dde41cf661ff6009df2c27b08f'
 
-# Load model & scaler for current AQI prediction
+# Load model & scaler
 model = pickle.load(open('aqi_model.pkl', 'rb'))
 scaler = pickle.load(open('scaler.pkl', 'rb'))
 
-st.title("🌍 AQI Predictor | Current & 5-Hour Forecast")
+st.title("🌍 AQI Predictor | Current + Next 5 Hours Forecast with ML")
 
 mode = st.radio("Choose Mode", ["City", "Coordinates"])
+
+# Timezone for IST
+ist = timezone('Asia/Kolkata')
 
 # Functions
 def get_latlon(city):
@@ -37,7 +41,7 @@ def get_forecast_aqi(lat, lon):
     url = f"http://api.openweathermap.org/data/2.5/air_pollution/forecast?lat={lat}&lon={lon}&appid={API_KEY}"
     response = requests.get(url).json()
     if 'list' in response:
-        return response['list'][:6]  # now + next 5 hours
+        return response['list']
     return None
 
 # Input Section
@@ -51,39 +55,52 @@ if mode == "City":
         lat, lon = get_latlon(city)
         if lat:
             location_name = city
-            st.success(f"📍 {city} (Lat: {lat}, Lon: {lon})")
+            st.success(f"📍 {city} (Lat: {lat:.4f}, Lon: {lon:.4f})")
             components = get_current_pollutants(lat, lon)
             forecast = get_forecast_aqi(lat, lon)
         else:
-            st.error("City not found.")
+            st.error("City not found. Please check the spelling or try a nearby location.")
 
 elif mode == "Coordinates":
-    lat = st.number_input("Latitude", format="%.4f")
-    lon = st.number_input("Longitude", format="%.4f")
+    lat = st.number_input("Enter Latitude", format="%.4f")
+    lon = st.number_input("Enter Longitude", format="%.4f")
     if st.button("Get AQI"):
-        location_name = f"({lat},{lon})"
+        location_name = f"Coordinates ({lat:.4f}, {lon:.4f})"
         components = get_current_pollutants(lat, lon)
         forecast = get_forecast_aqi(lat, lon)
 
-# AQI Display Section
+# Current AQI Display
 if components:
-    st.subheader("📊 Current Pollutants (µg/m³):")
+    st.subheader("📊 Current Pollutant Concentrations (µg/m³):")
     st.json(components)
 
     input_data = np.array([[components.get(k, 0) for k in ['co', 'no', 'no2', 'o3', 'so2', 'pm2_5', 'pm10', 'nh3']]])
     scaled_data = scaler.transform(input_data)
     current_prediction = model.predict(scaled_data)[0]
 
-    current_time = datetime.now()
-    st.header(f"AQI for {location_name}")
-    st.success(f"✅ Now ({current_time.strftime('%H:%M:%S')}): {current_prediction:.2f}")
+    current_time = datetime.now(ist)
+    st.header(f"✅ AQI for {location_name}")
+    st.success(f"Now ({current_time.strftime('%H:%M:%S')} IST): ML Predicted AQI = {current_prediction:.2f}")
 
+# Forecast AQI Display using ML Model
 if forecast:
-    st.subheader("🕒 Next 5-Hour AQI Forecast (via API):")
-    for entry in forecast:
-        timestamp = datetime.utcfromtimestamp(entry['dt']) + timedelta(hours=5.5)  # Adjust to IST
-        aqi = entry['main']['aqi']  # API gives AQI as category 1-5
-        pollutants = entry['components']
-        st.write(f"**{timestamp.strftime('%H:%M')} IST** ➡️ AQI Category: {aqi}")
-        with st.expander("Pollutants"):
-            st.json(pollutants)
+    st.subheader("🕒 AQI Forecast (Next 5 Hours, ML Predicted):")
+
+    current_timestamp = datetime.now().timestamp()
+    upcoming_forecasts = [entry for entry in forecast if entry['dt'] > current_timestamp][:5]
+
+    if not upcoming_forecasts:
+        st.warning("No forecast data available for the next 5 hours.")
+    else:
+        for entry in upcoming_forecasts:
+            timestamp = datetime.fromtimestamp(entry['dt'], ist)
+            pollutants = entry['components']
+
+            # ML Prediction for forecast pollutants
+            future_data = np.array([[pollutants.get(k, 0) for k in ['co', 'no', 'no2', 'o3', 'so2', 'pm2_5', 'pm10', 'nh3']]])
+            future_scaled = scaler.transform(future_data)
+            future_aqi_pred = model.predict(future_scaled)[0]
+
+            st.write(f"**{timestamp.strftime('%H:%M')} IST** ➡️ ML Predicted AQI = {future_aqi_pred:.2f}")
+            with st.expander("View Forecast Pollutant Breakdown"):
+                st.json(pollutants)
