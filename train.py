@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, r2_score
 import pickle
-
+import matplotlib.pyplot as plt
 # Load dataset
 df = pd.read_csv('data/aqi_data_fetched1.csv')
 

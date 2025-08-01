@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 import numpy as np
 import pickle
+import matplotlib.pyplot as plt
 from datetime import datetime
 from dotenv import load_dotenv
 import os
